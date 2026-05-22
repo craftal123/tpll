@@ -1,16 +1,17 @@
 package me.craftal123.fasttpll;
 
+import de.btegermany.terraplusminus.gen.RealWorldGenerator;
+import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
-
-    private static final double EARTH_RADIUS_BLOCKS = 6378137.0;
-    private static final double MAX_MERCATOR_LAT = 85.05112878;
 
     @Override
     public void onEnable() {
@@ -29,46 +30,61 @@ public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
 
         if (args.length < 2) {
             player.sendMessage("Usage: /fasttpll <lat> <lon> [y]");
-            player.sendMessage("Examples: /fasttpll 43N 46E, /fasttpll 43.5 -46.2");
+            player.sendMessage("Examples: /fasttpll 31.2518N 34.7913E, /fasttpll 43N 46E 120");
+            return true;
+        }
+
+        World world = player.getWorld();
+        ChunkGenerator generator = world.getGenerator();
+
+        if (!(generator instanceof RealWorldGenerator realWorldGenerator)) {
+            player.sendMessage("This world is not using the Terra+- RealWorldGenerator.");
             return true;
         }
 
         try {
             double lat = parseCoordinate(args[0], true);
             double lon = parseCoordinate(args[1], false);
-            double[] xz = fromGeo(lon, lat);
+
+            GeographicProjection projection = realWorldGenerator.getSettings().projection();
+            double[] xz = projection.fromGeo(lon, lat);
 
             double y;
             if (args.length >= 3) {
-                y = Double.parseDouble(clean(args[2]));
+                y = Double.parseDouble(clean(args[2])) + realWorldGenerator.getYOffset();
             } else {
-                y = player.getWorld().getHighestBlockYAt((int) xz[0], (int) xz[1]) + 1;
+                y = player.getLocation().getY();
             }
 
-            Location location = new Location(
-                    player.getWorld(),
-                    xz[0],
-                    y,
-                    xz[1],
-                    player.getYaw(),
-                    player.getPitch()
-            );
+            int chunkX = ((int) Math.floor(xz[0])) >> 4;
+            int chunkZ = ((int) Math.floor(xz[1])) >> 4;
 
-            player.teleportAsync(location);
-            player.sendMessage("Teleported to lat " + lat + ", lon " + lon);
-            player.sendMessage("X: " + Math.round(xz[0]) + " Z: " + Math.round(xz[1]));
+            player.sendMessage("Loading target chunk...");
+
+            world.getChunkAtAsync(chunkX, chunkZ).thenAccept(chunk -> {
+                Location location = new Location(
+                        world,
+                        xz[0],
+                        y,
+                        xz[1],
+                        player.getYaw(),
+                        player.getPitch()
+                );
+
+                player.teleportAsync(location).thenAccept(success -> {
+                    if (success) {
+                        player.sendMessage("Teleported to lat " + lat + ", lon " + lon);
+                        player.sendMessage("X: " + Math.round(xz[0]) + " Y: " + Math.round(y) + " Z: " + Math.round(xz[1]));
+                    } else {
+                        player.sendMessage("Teleport failed.");
+                    }
+                });
+            });
         } catch (Exception e) {
-            player.sendMessage("Invalid coordinates. Try: /fasttpll 43N 46E");
+            player.sendMessage("Invalid coordinates. Try: /fasttpll 31.2518N 34.7913E");
         }
 
         return true;
-    }
-
-    private static double[] fromGeo(double lon, double lat) {
-        double clampedLat = Math.max(-MAX_MERCATOR_LAT, Math.min(MAX_MERCATOR_LAT, lat));
-        double x = Math.toRadians(lon) * EARTH_RADIUS_BLOCKS;
-        double z = -Math.log(Math.tan(Math.PI / 4.0 + Math.toRadians(clampedLat) / 2.0)) * EARTH_RADIUS_BLOCKS;
-        return new double[]{x, z};
     }
 
     private static double parseCoordinate(String input, boolean latitude) {
