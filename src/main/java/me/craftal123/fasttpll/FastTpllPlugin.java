@@ -1,7 +1,6 @@
 package me.craftal123.fasttpll;
 
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
-import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -10,6 +9,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.lang.reflect.Method;
 
 public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
 
@@ -45,9 +46,7 @@ public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
         try {
             double lat = parseCoordinate(args[0], true);
             double lon = parseCoordinate(args[1], false);
-
-            GeographicProjection projection = realWorldGenerator.getSettings().projection();
-            double[] xz = projection.fromGeo(lon, lat);
+            double[] xz = fromGeo(realWorldGenerator, lon, lat);
 
             double y;
             if (args.length >= 3) {
@@ -62,15 +61,7 @@ public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
             player.sendMessage("Loading target chunk...");
 
             world.getChunkAtAsync(chunkX, chunkZ).thenAccept(chunk -> {
-                Location location = new Location(
-                        world,
-                        xz[0],
-                        y,
-                        xz[1],
-                        player.getYaw(),
-                        player.getPitch()
-                );
-
+                Location location = new Location(world, xz[0], y, xz[1], player.getYaw(), player.getPitch());
                 player.teleportAsync(location).thenAccept(success -> {
                     if (success) {
                         player.sendMessage("Teleported to lat " + lat + ", lon " + lon);
@@ -81,10 +72,19 @@ public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
                 });
             });
         } catch (Exception e) {
-            player.sendMessage("Invalid coordinates. Try: /fasttpll 31.2518N 34.7913E");
+            player.sendMessage("Invalid coordinates or Terra+- projection error.");
+            getLogger().warning(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
 
         return true;
+    }
+
+    private static double[] fromGeo(RealWorldGenerator generator, double lon, double lat) throws Exception {
+        Object settings = generator.getSettings();
+        Method projectionMethod = settings.getClass().getMethod("projection");
+        Object projection = projectionMethod.invoke(settings);
+        Method fromGeoMethod = projection.getClass().getMethod("fromGeo", double.class, double.class);
+        return (double[]) fromGeoMethod.invoke(projection, lon, lat);
     }
 
     private static double parseCoordinate(String input, boolean latitude) {
@@ -93,18 +93,9 @@ public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
         s = clean(s);
         double value = Double.parseDouble(s);
 
-        if (negative) {
-            value = -Math.abs(value);
-        }
-
-        if (latitude && (value < -90 || value > 90)) {
-            throw new IllegalArgumentException("Latitude out of range");
-        }
-
-        if (!latitude && (value < -180 || value > 180)) {
-            throw new IllegalArgumentException("Longitude out of range");
-        }
-
+        if (negative) value = -Math.abs(value);
+        if (latitude && (value < -90 || value > 90)) throw new IllegalArgumentException("Latitude out of range");
+        if (!latitude && (value < -180 || value > 180)) throw new IllegalArgumentException("Longitude out of range");
         return value;
     }
 
