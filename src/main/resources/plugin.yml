@@ -1,0 +1,7 @@
+name: FastTpll
+version: 1.0
+main: me.craftal123.fasttpll.FastTpllPlugin
+api-version: '1.21'
+commands:
+  fasttpll:
+    usage: /fasttpll <lat> <lon> [y]
