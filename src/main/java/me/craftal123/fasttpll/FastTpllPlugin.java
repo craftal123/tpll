@@ -80,7 +80,8 @@ public class FastTpllPlugin extends JavaPlugin implements CommandExecutor {
     }
 
     private static double[] fromGeo(RealWorldGenerator generator, double lon, double lat) throws Exception {
-        Object settings = generator.getSettings();
+        Method getSettingsMethod = generator.getClass().getMethod("getSettings");
+        Object settings = getSettingsMethod.invoke(generator);
         Method projectionMethod = settings.getClass().getMethod("projection");
         Object projection = projectionMethod.invoke(settings);
         Method fromGeoMethod = projection.getClass().getMethod("fromGeo", double.class, double.class);
